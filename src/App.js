@@ -1,29 +1,12 @@
-import React, { useState, useRef, useEffect } from "react";
-import Form from "./components/Form";
-import FilterButton from "./components/FilterButton";
-import Todo from "./components/Todo";
-import { nanoid } from "nanoid";
-
-
-function usePrevious(value) {
-  const ref = useRef();
-  useEffect(() => {
-    ref.current = value;
-  });
-  return ref.current;
-}
-
-const FILTER_MAP = {
-  All: () => true,
-  Active: task => !task.completed,
-  Completed: task => task.completed
-};
-
-const FILTER_NAMES = Object.keys(FILTER_MAP);
+import React, { useState } from "react"
+import Form from "./components/Form"
+import Todo from "./components/Todo"
+import { nanoid } from "nanoid"
+import useLocalStorage from "./hooks/useLocalStorage"
 
 function App(props) {
-  const [tasks, setTasks] = useState(props.tasks);
-  const [filter, setFilter] = useState('All');
+  const [tasks, setTasks] = useLocalStorage("tasks", [])
+  const [tasksSearch, setTasksSearch] = useState('')
 
   function toggleTaskCompleted(id) {
     const updatedTasks = tasks.map(task => {
@@ -31,91 +14,127 @@ function App(props) {
       if (id === task.id) {
         // use object spread to make a new obkect
         // whose `completed` prop has been inverted
-        return {...task, completed: !task.completed}
+        return { ...task, completed: !task.completed }
       }
-      return task;
-    });
-    setTasks(updatedTasks);
+      return task
+    })
+    setTasks(updatedTasks)
   }
-
 
   function deleteTask(id) {
-    const remainingTasks = tasks.filter(task => id !== task.id);
-    setTasks(remainingTasks);
+    const remainingTasks = tasks.filter(task => id !== task.id)
+    setTasks(remainingTasks)
   }
 
-
-  function editTask(id, newName) {
+  function editTask(id, newTask) {
     const editedTaskList = tasks.map(task => {
-    // if this task has the same ID as the edited task
+      // if this task has the same ID as the edited task
       if (id === task.id) {
         //
-        return {...task, name: newName}
+        return { ...task, ...newTask }
       }
-      return task;
-    });
-    setTasks(editedTaskList);
+      return task
+    })
+    setTasks(editedTaskList)
   }
 
-  const taskList = tasks
-  .filter(FILTER_MAP[filter])
-  .map(task => (
-    <Todo
-      id={task.id}
-      name={task.name}
-      completed={task.completed}
-      key={task.id}
-      toggleTaskCompleted={toggleTaskCompleted}
-      deleteTask={deleteTask}
-      editTask={editTask}
-    />
-  ));
-
-  const filterList = FILTER_NAMES.map(name => (
-    <FilterButton
-      key={name}
-      name={name}
-      isPressed={name === filter}
-      setFilter={setFilter}
-    />
-  ));
-
-  function addTask(name) {
-    const newTask = { id: "todo-" + nanoid(), name: name, completed: false };
-    setTasks([...tasks, newTask]);
+  function addTask(task) {
+    const newTask = { id: "todo-" + nanoid(), ...task, completed: false }
+    setTasks([...tasks, newTask])
   }
 
+  function setEditingTask(id, isEditing) {
+    const newTask = tasks.map(task => {
+      return { ...task, isEditing: task.id === id }
+    })
 
-  const tasksNoun = taskList.length !== 1 ? 'tasks' : 'task';
-  const headingText = `${taskList.length} ${tasksNoun} remaining`;
-
-  const listHeadingRef = useRef(null);
-  const prevTaskLength = usePrevious(tasks.length);
-
-  useEffect(() => {
-    if (tasks.length - prevTaskLength === -1) {
-      listHeadingRef.current.focus();
+    // Handle case close detail box
+    if (isEditing) {
+      const edittingTask = newTask.find(task => task.id === id)
+      edittingTask.isEditing = !edittingTask.isEditing
     }
-  }, [tasks.length, prevTaskLength]);
+    setTasks(newTask)
+  }
+
+  function handleChangeTaskSearch(e) {
+    setTasksSearch(e.target.value)
+  }
+
+  function deleteCompletedTasks() {
+    const remainingTasks = tasks.filter(task => !task.completed)
+    setTasks(remainingTasks)
+  }
+
+  const filterTasks = tasks.filter(task => task.name.toLowerCase().indexOf(tasksSearch.toLowerCase()) > -1)
+  filterTasks.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+
+  const taskList = filterTasks
+    .map(task => (
+      <Todo
+        id={task.id}
+        task={task}
+        completed={task.completed}
+        key={task.id}
+        toggleTaskCompleted={toggleTaskCompleted}
+        deleteTask={deleteTask}
+        editTask={editTask}
+        setEditingTask={setEditingTask}
+      />
+    ))
+
+  const isDisplayBulkAction = filterTasks.some(task => task.completed)
 
   return (
-    <div className="todoapp stack-large">
-      <Form addTask={addTask} />
-      <div className="filters btn-group stack-exception">
-        {filterList}
-      </div>
-      <h2 id="list-heading" tabIndex="-1" ref={listHeadingRef}>
-        {headingText}
+    <div className="container"> <div className="todoapp stack-large">
+      <h2 className="text-center">
+        New Task
       </h2>
-      <ul
-        role="list"
-        className="todo-list stack-large stack-exception"
-        aria-labelledby="list-heading"
-      >
-        {taskList}
-      </ul>
+      <Form addTask={addTask} />
     </div>
-  );
+      <div className="todoapp stack-large">
+        <h2 className="text-center">
+          To Do List
+        </h2>
+        <input
+          type="text"
+          className="input input__md"
+          name="text"
+          autoComplete="off"
+          value={tasksSearch}
+          onChange={handleChangeTaskSearch}
+          placeholder="Search"
+        />
+        <ul
+          className="todo-list stack-large stack-exception"
+          aria-labelledby="list-heading"
+        >
+          {taskList}
+        </ul>
+
+        {isDisplayBulkAction && <div className="bulkAction">
+          <label className="todo-label" htmlFor={props.id}>
+            Bulk action
+          </label>
+          <div className="btn-group">
+            <button
+              type="button"
+              className="btn btn__info"
+            // onClick={() => setEditingTask(task.id, isEditing)}
+            >
+              Done
+            </button>
+            <button
+              type="button"
+              className="btn btn__danger"
+              onClick={deleteCompletedTasks}
+            >
+              Remove
+            </button>
+          </div>
+        </div>}
+      </div>
+    </div>
+  )
 }
 
-export default App;
+export default App
